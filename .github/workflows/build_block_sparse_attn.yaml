@@ -51,6 +51,7 @@ jobs:
                 curl \
                 git \
                 python3.12 \
+                python3.12-dev \
                 python3.12-venv
               curl -LsSf https://astral.sh/uv/install.sh | sh
               export PATH="/root/.local/bin:$PATH"
