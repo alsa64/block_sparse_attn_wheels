@@ -1,7 +1,7 @@
 [project]
 name = "bsa-standalone"
-version = "0.1.0"
-description = "Standalone builder for Block-Sparse Attention"
+version = "0.2.0"
+description = "Standalone builder for CUDA attention wheels"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

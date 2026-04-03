@@ -1,4 +1,4 @@
-name: Build Block-Sparse Attention
+name: Build Attention Wheels
 
 on:
   push:
@@ -32,13 +32,15 @@ jobs:
 
       - name: Build wheel in CUDA container
         env:
-          BLOCK_SPARSE_ATTN_CUDA_ARCHS: ${{ github.event_name == 'workflow_dispatch' && inputs.cuda_archs || '' }}
+          ATTN_CUDA_ARCHS: ${{ github.event_name == 'workflow_dispatch' && inputs.cuda_archs || '' }}
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:${{ github.workspace }}" \
             -w "${{ github.workspace }}" \
-            -e BLOCK_SPARSE_ATTN_CUDA_ARCHS \
+            -e ATTN_CUDA_ARCHS \
             -e BSA_CLONE_DIR="${{ github.workspace }}/Block-Sparse-Attention" \
+            -e SAGEATTENTION_CLONE_DIR="${{ github.workspace }}/SageAttention" \
+            -e FLASH_ATTN_CLONE_DIR="${{ github.workspace }}/flash-attention" \
             nvidia/cuda:13.0.2-devel-ubuntu24.04 \
             bash -lc '
               set -euo pipefail
@@ -57,26 +59,31 @@ jobs:
               export PATH="/root/.local/bin:$PATH"
               uv sync --python 3.12
               bash scripts/build_block_sparse_attn.sh
+              bash scripts/build_sageattention.sh
+              bash scripts/build_flash_attn.sh
             '
 
-      - name: Find wheels
+      - name: Collect wheels
         run: |
-          wheels=$(ls ${{ github.workspace }}/Block-Sparse-Attention/dist/block_sparse_attn-*.whl 2>/dev/null)
+          mkdir -p dist
+          cp ${{ github.workspace }}/Block-Sparse-Attention/dist/*.whl dist/
+          cp ${{ github.workspace }}/SageAttention/dist/*.whl dist/
+          cp ${{ github.workspace }}/flash-attention/dist/*.whl dist/
+
+          wheels=$(ls dist/*.whl 2>/dev/null)
           if [ -z "$wheels" ]; then
-            echo "Failed to find any wheels."
+            echo "Failed to find any wheels"
             exit 1
           fi
-          echo "Found wheels:"
-          echo "$wheels"
-          wheel_path=$(echo "$wheels" | head -n1)
-          echo "wheel_path=${wheel_path}" >> $GITHUB_ENV
-          echo "wheel_name=$(basename ${wheel_path})" >> $GITHUB_ENV
 
-      - name: Upload wheel artifact
+          echo "Collected wheels:"
+          echo "$wheels"
+
+      - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: block-sparse-attn-wheel
-          path: ${{ env.wheel_path }}
+          name: attention-wheels
+          path: dist/*.whl
 
   release:
     needs: build
@@ -88,36 +95,22 @@ jobs:
       - name: Download wheel artifact
         uses: actions/download-artifact@v4
         with:
-          name: block-sparse-attn-wheel
+          name: attention-wheels
           path: dist
 
-      - name: Resolve release asset
+      - name: Check release assets
         run: |
-          wheel_path=$(ls dist/block_sparse_attn-*.whl 2>/dev/null | head -n1)
-          if [ -z "$wheel_path" ]; then
-            echo "Failed to find downloaded wheel artifact."
+          wheels=$(ls dist/*.whl 2>/dev/null)
+          if [ -z "$wheels" ]; then
+            echo "Failed to find downloaded wheel artifacts"
             exit 1
           fi
-          echo "wheel_path=${wheel_path}" >> $GITHUB_ENV
-          echo "wheel_name=$(basename ${wheel_path})" >> $GITHUB_ENV
 
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create release and upload wheels
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: build_block_sparse_attn-${{ github.sha }}
-          release_name: Build Block-Sparse Attention Wheels (${{ github.sha }})
-          commitish: ${{ github.sha }}
+          tag_name: build_attention_wheels-${{ github.sha }}
+          name: Build Attention Wheels (${{ github.sha }})
+          target_commitish: ${{ github.sha }}
           prerelease: true
-
-      - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.wheel_path }}
-          asset_name: ${{ env.wheel_name }}
-          asset_content_type: application/octet-stream
+          files: dist/*.whl
