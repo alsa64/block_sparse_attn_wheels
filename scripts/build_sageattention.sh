@@ -14,6 +14,12 @@ resolve_cuda_archs
 ensure_build_deps
 resolve_max_jobs
 
+info "Installing SageAttention-specific build dependencies..."
+install_python_packages \
+	"setuptools>=62,<75" \
+	"packaging>=21,<24" \
+	"wheel>=0.38,<0.44"
+
 info "Cloning SageAttention..."
 clone_or_update_repo "$SAGEATTENTION_CLONE_DIR" "$SAGEATTENTION_GIT_URL" "$SAGEATTENTION_GIT_REF"
 
@@ -29,7 +35,7 @@ info "  CUDA_HOME=$CUDA_HOME"
 info "  TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST"
 info "  EXT_PARALLEL=$EXT_PARALLEL"
 
-"$VENV_PYTHON" -m build --wheel --no-isolation
+"$VENV_PYTHON" setup.py bdist_wheel
 
 SAGEATTENTION_WHEEL=$(
 	"$VENV_PYTHON" - <<'PY'

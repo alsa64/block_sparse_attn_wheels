@@ -32,7 +32,7 @@ info "  FLASH_ATTN_CUDA_ARCHS=$FLASH_ATTN_CUDA_ARCHS"
 info "  MAX_JOBS=$MAX_JOBS"
 info "  NVCC_THREADS=$NVCC_THREADS"
 
-"$VENV_PYTHON" -m build --wheel --no-isolation
+"$VENV_PYTHON" setup.py bdist_wheel
 
 FLASH_ATTN_WHEEL=$(
 	"$VENV_PYTHON" - <<'PY'

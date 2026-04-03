@@ -13,6 +13,16 @@ torch = [
     { index = "pytorch-cu130" },
 ]
 
+[tool.uv.extra-build-dependencies]
+block_sparse_attn = ["torch"]
+flash_attn = ["torch"]
+sageattention = [
+    "torch",
+    "setuptools>=62,<75",
+    "packaging>=21,<24",
+    "wheel>=0.38,<0.44",
+]
+
 [[tool.uv.index]]
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"

@@ -1,5 +1,8 @@
 name: Build Attention Wheels
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
   workflow_dispatch:
@@ -19,18 +22,32 @@ defaults:
     shell: bash -x -e -u -o pipefail {0}
 
 jobs:
-  build:
+  build-wheel:
     runs-on: ubuntu-24.04
+    continue-on-error: true
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: block_sparse_attn
+            script: block_sparse_attn
+            clone_dir: Block-Sparse-Attention
+          - package: sageattention
+            script: sageattention
+            clone_dir: SageAttention
+          - package: flash_attn
+            script: flash_attn
+            clone_dir: flash-attention
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           clean: false
 
-      - name: Build wheel in CUDA container
+      - name: Build ${{ matrix.package }} wheel in CUDA container
         env:
           ATTN_CUDA_ARCHS: ${{ github.event_name == 'workflow_dispatch' && inputs.cuda_archs || '' }}
         run: |
@@ -57,46 +74,49 @@ jobs:
                 python3.12-venv
               curl -LsSf https://astral.sh/uv/install.sh | sh
               export PATH="/root/.local/bin:$PATH"
+              export UV_LINK_MODE=copy
               uv sync --python 3.12
-              bash scripts/build_block_sparse_attn.sh
-              bash scripts/build_sageattention.sh
-              bash scripts/build_flash_attn.sh
+              bash scripts/build_attention_wheel.sh "${{ matrix.script }}"
             '
 
-      - name: Collect wheels
+      - name: Collect ${{ matrix.package }} wheels
+        if: always()
         run: |
           mkdir -p dist
-          cp ${{ github.workspace }}/Block-Sparse-Attention/dist/*.whl dist/
-          cp ${{ github.workspace }}/SageAttention/dist/*.whl dist/
-          cp ${{ github.workspace }}/flash-attention/dist/*.whl dist/
+          if ls "${{ github.workspace }}/${{ matrix.clone_dir }}/dist"/*.whl >/dev/null 2>&1; then
+            cp "${{ github.workspace }}/${{ matrix.clone_dir }}/dist"/*.whl dist/
+          fi
 
           wheels=$(ls dist/*.whl 2>/dev/null)
           if [ -z "$wheels" ]; then
-            echo "Failed to find any wheels"
+            echo "No wheels collected for ${{ matrix.package }}"
             exit 1
           fi
 
-          echo "Collected wheels:"
+          echo "Collected wheels for ${{ matrix.package }}:"
           echo "$wheels"
 
-      - name: Upload wheel artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload ${{ matrix.package }} wheel artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
         with:
-          name: attention-wheels
+          name: attention-wheel-${{ matrix.package }}
           path: dist/*.whl
+          if-no-files-found: ignore
 
   release:
-    needs: build
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.upload-to-release)
+    needs: build-wheel
+    if: always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.upload-to-release))
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download wheel artifact
-        uses: actions/download-artifact@v4
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v5
         with:
-          name: attention-wheels
+          pattern: attention-wheel-*
           path: dist
+          merge-multiple: true
 
       - name: Check release assets
         run: |
@@ -107,10 +127,11 @@ jobs:
           fi
 
       - name: Create release and upload wheels
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build_attention_wheels-${{ github.sha }}
-          name: Build Attention Wheels (${{ github.sha }})
-          target_commitish: ${{ github.sha }}
-          prerelease: true
-          files: dist/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="build_attention_wheels-${GITHUB_SHA}"
+          gh release create "$tag" dist/*.whl \
+            --target "$GITHUB_SHA" \
+            --title "Build Attention Wheels ($GITHUB_SHA)" \
+            --prerelease

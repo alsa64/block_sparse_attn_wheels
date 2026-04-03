@@ -117,3 +117,8 @@ clone_or_update_repo() {
 clean_python_build_artifacts() {
 	rm -rf dist/ build/ *.egg-info
 }
+
+install_python_packages() {
+	cd "$PROJECT_DIR"
+	uv pip install --python "$VENV_PYTHON" "$@"
+}
