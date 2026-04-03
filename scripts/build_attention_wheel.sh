@@ -11,13 +11,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$1" in
 block_sparse_attn)
-	exec "$SCRIPT_DIR/build_block_sparse_attn.sh"
+	exec bash "$SCRIPT_DIR/build_block_sparse_attn.sh"
 	;;
 sageattention)
-	exec "$SCRIPT_DIR/build_sageattention.sh"
+	exec bash "$SCRIPT_DIR/build_sageattention.sh"
 	;;
 flash_attn)
-	exec "$SCRIPT_DIR/build_flash_attn.sh"
+	exec bash "$SCRIPT_DIR/build_flash_attn.sh"
 	;;
 *)
 	echo "unknown package: $1" >&2
