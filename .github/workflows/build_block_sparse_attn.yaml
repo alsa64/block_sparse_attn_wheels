@@ -1,6 +1,7 @@
 name: Build Block-Sparse Attention
 
 on:
+  push:
   workflow_dispatch:
     inputs:
       cuda_archs:
@@ -18,13 +19,13 @@ defaults:
     shell: bash -x -e -u -o pipefail {0}
 
 jobs:
-  build-and-release:
+  build:
     runs-on: [self-hosted, x64]
     permissions:
-      contents: write
+      contents: read
     strategy:
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.12"]
 
     steps:
       - name: Checkout repository
@@ -36,24 +37,24 @@ jobs:
         id: uv-version
         uses: ./.github/actions/read-uv-version
 
-      - name: 📦 Setup uv
+      - name: Setup uv
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: false
           version: ${{ steps.uv-version.outputs.version }}
 
-      - name: ⚙️ Prepare environment
+      - name: Prepare environment
         run: |
           uv sync --python ${{ matrix.python-version }}
 
-      - name: 🛠️ Build Block-Sparse Attention
+      - name: Build Block-Sparse Attention
         env:
-          BLOCK_SPARSE_ATTN_CUDA_ARCHS: ${{ github.event.inputs.cuda_archs }}
+          BLOCK_SPARSE_ATTN_CUDA_ARCHS: ${{ github.event_name == 'workflow_dispatch' && inputs.cuda_archs || '' }}
           BSA_CLONE_DIR: ${{ github.workspace }}/Block-Sparse-Attention
         run: |
           bash scripts/build_block_sparse_attn.sh
 
-      - name: 🔍 Find Wheels
+      - name: Find wheels
         run: |
           wheels=$(ls ${{ github.workspace }}/Block-Sparse-Attention/dist/block_sparse_attn-*.whl 2>/dev/null)
           if [ -z "$wheels" ]; then
@@ -66,9 +67,37 @@ jobs:
           echo "wheel_path=${wheel_path}" >> $GITHUB_ENV
           echo "wheel_name=$(basename ${wheel_path})" >> $GITHUB_ENV
 
-      - name: 🏷️ Create Release
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: block-sparse-attn-wheel
+          path: ${{ env.wheel_path }}
+
+  release:
+    needs: build
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.upload-to-release)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: block-sparse-attn-wheel
+          path: dist
+
+      - name: Resolve release asset
+        run: |
+          wheel_path=$(ls dist/block_sparse_attn-*.whl 2>/dev/null | head -n1)
+          if [ -z "$wheel_path" ]; then
+            echo "Failed to find downloaded wheel artifact."
+            exit 1
+          fi
+          echo "wheel_path=${wheel_path}" >> $GITHUB_ENV
+          echo "wheel_name=$(basename ${wheel_path})" >> $GITHUB_ENV
+
+      - name: Create release
         id: create_release
-        if: inputs.upload-to-release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,8 +107,7 @@ jobs:
           commitish: ${{ github.sha }}
           prerelease: true
 
-      - name: 🚀 Upload Release Asset
-        if: inputs.upload-to-release
+      - name: Upload release asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
